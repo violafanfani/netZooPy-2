@@ -203,7 +203,7 @@ def lioness(expression, motif, ppi, output_panda, output_lioness, el, fmt, compu
 ################################################
 
 @click.command()
-@click.option('-n', '--network_file', 'network', type=str, required=True,
+@click.option('-n', '--network_file', 'network_file', type=str, required=True,
               help='Path to file encoding an edgelist.')
 @click.option('--sep', type=str, show_default=True, default=',',
               help='network file separator')
@@ -230,8 +230,8 @@ def lioness(expression, motif, ppi, output_panda, output_lioness, el, fmt, compu
 def condor(
     network_file,
     sep=",",
-    index_col=0,
-    header=0,
+    index_col=None,
+    header=None,
     initial_method="LCS",
     initial_project=False,
     com_num="def",
@@ -248,7 +248,10 @@ def condor(
         tar and reg final memberships are saved to csv
     """
 
-    co = condor_object(network_file, sep, index_col, header)
+    if sep=="tab":
+        co = condor_object(network_file, '\t', index_col, header)
+    else:
+        co = condor_object(network_file, sep, index_col, header)
     co.initial_community(initial_method, initial_project)
     co.brim(delta_qmin, com_num, resolution)
     co.tar_memb.to_csv(tar_output)
