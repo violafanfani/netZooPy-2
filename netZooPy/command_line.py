@@ -5,8 +5,10 @@ import getopt
 import click
 from netZooPy.panda.panda import Panda
 from netZooPy.lioness import Lioness
+from netZooPy.lioness import AggroLioness
 from netZooPy.ligress import Ligress
 from netZooPy.condor import condor_object
+import yaml
 
 #############################################################################
 # PANDA #####################################################################
@@ -319,3 +321,106 @@ def ligress(expression, priors_table, ppi,output_lioness,ppitable, fmt, computin
     ligress_obj.run_ligress(keep_coexpression=save_coexpression,cores=ncores, save_memory=save_memory,computing_panda = computing, precision=precision, alpha = alpha, th_motifs=th_motifs, delta=delta, tune_delta=tune_delta)
     print('All done!')
 
+
+##############################################################################
+########## AGGROLIONESS ######################################################
+##############################################################################
+
+@click.command()
+@click.option('-e', '--expression', 'expression', type=str, required=True,
+              help='Path to file containing the gene expression data. By default, \
+                  the expression file does not have a header, and the cells are separated by a tab.')
+@click.option('-m', '--motif', 'motif', type=str, required=True,
+              help='Path to pair file containing the transcription factor DNA binding motif edges in the form of TF-gene-weight(0/1). If not provided, the gene coexpression matrix is returned as a result network.')
+@click.option('-p', '--ppi', 'ppi', type=str, required=True,
+              help='Path to pair file containing the PPI edges. The PPI can be symmetrical, if not, it will be transformed into a symmetrical adjacency matrix.')
+@click.option('-op', '--out-panda', 'output_panda', type=str, required=True,
+              help='Output panda file. Format as txt')
+@click.option('-ol', '--out-lioness', 'output_lioness', type=str, required=True,
+              help='Output lioness folder')
+@click.option('--groups_yaml', type=str, default='', show_default=True,
+              help='YAML file with the groups dictionary')
+@click.option('--el', type=str, show_default=True, default='None',
+              help='Lioness output export. If a file is passed, the final output will be saved as a complete table, with indices and column names, using the format specified here. Otherwise a standard liones.fmt file with no annotation is saved')
+@click.option('--fmt', type=str, show_default=True, default='npy',
+              help='Lioness network files output format. Choose one between .npy,.txt,.mat')
+@click.option('--computing', type=str, show_default=True, default='cpu',
+              help='computing option, choose one between cpu and gpu')
+@click.option('--precision', type=str, show_default=True, default='double',
+              help='precision option')
+@click.option('--ncores', type=int, show_default=True, default=1,
+              help='Number of cores. Lioness CPU parallelizes over ncores')
+@click.option('--save_memory', is_flag=True, show_default=False,
+              help='panda option. When true the result network is weighted adjacency matrix of size (nTFs, nGenes).\
+                  when false The result network has 4 columns in the form gene - TF - weight in motif prior - PANDA edge.')
+@click.option('--save_tmp', is_flag=True, show_default=True,
+              help='panda option')
+@click.option('--rm_missing', is_flag=True, show_default=False,
+              help='Removes the genes and TFs that are not present in one of the priors. Works only if modeProcess=legacy')
+@click.option('--mode_process', type=str, default='union', show_default=True,
+              help='panda option for input data processing. Choose between union(default), \
+                  legacy and intersection')
+@click.option('--output_type', type=str, default='network', show_default=True,
+              help='lioness option for output format. Choose one between network, gene_targeting, tf_targeting')
+@click.option('--alpha', type=float, default=0.1, show_default=True,
+              help='panda and lioness first sample')
+@click.option('--panda_start', type=int, default=1, show_default=True,
+              help='panda first sample')
+@click.option('--panda_end', type=int, default=None, show_default=True,
+              help='panda last sample')
+@click.option('--start', type=int, default=1, show_default=True,
+              help='lioness first sample')
+@click.option('--end', type=int, default=None, show_default=True,
+              help='lioness last sample')
+@click.option('--with_header', is_flag=True, show_default=False,
+              help='Pass if the expression file has a header. It will be used to save samples with the correct name.')
+@click.option('--save_single_lioness', is_flag=True, show_default=False,
+              help='Pass this flag to save all single lioness networks generated.')
+@click.option('--ignore_final', is_flag=True, show_default=False,
+              help='The whole lioness data is not kept in memory. Always use save_single_lioness for this')
+@click.option('--as_adjacency', is_flag=True, show_default=True,
+              help='If true, the final PANDA is saved as an adjacency matrix. Works only when save_memory is false')
+@click.option('--old_compatible', is_flag=True, show_default=True,
+              help='If true, PANDA is saved without headers. Pass this if you want the same results of netzoopy before v0.9.11')
+def aggrolioness(expression, motif, ppi, output_panda, output_lioness, groups_yaml, el, fmt, computing, precision, ncores, save_memory, save_tmp, rm_missing, mode_process,output_type, alpha, panda_start, panda_end, start, end, subset_numbers='', subset_names='',with_header=False, save_single_lioness=False,ignore_final=False, as_adjacency=False, old_compatible=False):
+    """Run Lioness to extract single-sample networks.
+    First runs panda using expression, motif and ppi data. 
+    Then runs lioness and puts results in the output_lioness folder.
+    Use flags to modify the function behavior. By default, boolean flags are false.
+
+    Example:
+
+            netzoopy lioness -e tests/puma/ToyData/ToyExpressionData.txt -m tests/puma/ToyData/ToyMotifData.txt -p tests/puma/ToyData/ToyPPIData.txt -op test_panda.txt -ol lioness/
+    
+    Reference:
+        Kuijjer, Marieke Lydia, et al. "Estimating sample-specific regulatory networks." Iscience 14 (2019): 226-240.
+    
+    """
+    
+    print('Input data:')
+    print('Expression:', expression)
+    print('Motif data:', motif)
+    print('PPI data:', ppi)
+    print('Output panda:', output_panda)
+    print('Lioness folder:', output_lioness)
+
+    # Run PANDA
+    print('Start Panda run ...')
+    
+    panda_obj = Panda(expression, motif, ppi, precision=precision, computing=computing, save_tmp=save_tmp, remove_missing=rm_missing, keep_expression_matrix=True, save_memory=save_memory, modeProcess=mode_process, start=panda_start, end=panda_end, with_header=with_header)
+    print('Panda saved. Computing Lioness...')
+    panda_obj.save_panda_results(output_panda, save_adjacency=as_adjacency, old_compatible=old_compatible)
+
+    if el=='None':
+        el = None
+
+
+    # We need to read the group table and overlap with the samples
+    with open(groups_yaml,'r') as f:
+        # The FullLoader parameter handles the conversion from YAML
+        # scalar values to Python the dictionary format
+        groups = yaml.load(f, Loader=yaml.FullLoader)
+
+    AggroLioness(panda_obj,groups = groups, computing=computing, precision=precision,ncores=ncores, save_dir=output_lioness, save_fmt=fmt, output = output_type, alpha = alpha, export_filename=el, save_single=save_single_lioness,ignore_final=ignore_final, start=start, end=end, subset_names=subset_names, subset_numbers=subset_numbers)
+
+    print('All done!')
