@@ -314,7 +314,7 @@ class AggroLioness(Lioness):
             else:
                 self.save_lioness_results()
 
-    def __lioness_loop(self, i):
+    def __lioness_loop(self, group_name):
         #TODO: this is now for GPU only in practice
         """ Initialize instance of Lioness class and load data.
 
@@ -324,8 +324,12 @@ class AggroLioness(Lioness):
                 An edge-by-sample matrix containing sample-specific networks.
         """
         # for i in self.indexes:
-        print("Running LIONESS for sample %d/%d:" %((i),(self.n_conditions)))
-        idx = [x for x in range(self.n_conditions) if x != i]  # all samples except i
+        ## We first detect the indices in the group and the keep only the samples not in the group
+        idxs = self.groups_index[group_name]
+        k = len(idxs)
+        print("Running LIONESS for group: %s (%d samples)" %(group_name, k))
+        
+        idx = [x for x in range(self.n_conditions) if x not in idxs]  # all samples except idxs
         with Timer("Computing coexpression network:"):
             if self.computing == "gpu":
                 import cupy as cp
@@ -365,18 +369,18 @@ class AggroLioness(Lioness):
 
         # For consistency with R, we are using the N panda_all - (N-1) panda_all_but_q
         lioness_network = (self.n_conditions * self.network) - (
-            (self.n_conditions - 1) * subset_panda_network
+            (self.n_conditions - k) * subset_panda_network
         )
         # old
         #lioness_network = self.n_conditions * (self.network - subset_panda_network) + subset_panda_network
 
         if self.save_single:
             with Timer(
-                "Saving LIONESS network %d (%s) to %s using %s format:"
-                % (i, self.expression_samples[i], self.save_dir, self.save_fmt)
+                "Saving LIONESS network %s to %s using %s format:"
+                % (group_name, self.save_dir, self.save_fmt)
             ):
                 
-                path = os.path.join(self.save_dir, "lioness.%s.%s.%s" % (self.expression_samples[i],str(i),self.save_fmt))
+                path = os.path.join(self.save_dir, "lioness%s.%s" % (group_name,self.save_fmt))
                 self.__lioness_to_disk(lioness_network, path)
 
         if self.ignore_final:
