@@ -53,7 +53,6 @@ def otter(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
     v = np.zeros((t, g))
 
     for i in range(Iter):
-        print(i)
         grad = W @ W.T @ W + P @ W + W @ C
         m = b1 * m + (4 * (1 - b1)) * grad
         v = b2 * v + (16 * (1 - b2)) * grad ** 2
@@ -64,9 +63,6 @@ def otter(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
         W = W - alpha * (m / (epst + np.sqrt(v)))
         
     return W
-
-
-
 
 
 def otter_gpu(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
@@ -101,6 +97,8 @@ def otter_gpu(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
     -------------
         .. [1] Weighill, Deborah, et al. "Gene Regulatory Network Inference as Relaxed Graph Matching." AAAI Conference (2021).
     """
+    import cupy as cp
+    
     b1 = 0.9
     b2 = 0.999
     eps = 0.00000001
@@ -111,6 +109,7 @@ def otter_gpu(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
 
     W = cp.asarray(W)
     P= cp.asarray(P)
+
 
     C = C  / cp.trace(C)
     W = W / cp.sqrt(cp.trace(cp.matmul(W, W.T)))
@@ -123,7 +122,6 @@ def otter_gpu(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
     v = cp.zeros((t, g))
 
     for i in range(Iter):
-        print(i)
         grad = cp.matmul(W, cp.matmul(W.T, W)) + cp.matmul(P, W) + cp.matmul(W, C)
         m = b1 * m + (4 * (1 - b1)) * grad
         v = b2 * v + (16 * (1 - b2)) * grad ** 2
@@ -132,6 +130,7 @@ def otter_gpu(W, P, C, lam=0.035, gamma=0.335, Iter=60, eta=0.00001, bexp=1):
         alpha = eta * sqrt(1 - b2t) / (1 - b1t)
         epst = eps * sqrt((1 - b2t))
         W = W - alpha * (m / (epst + cp.sqrt(v)))
-        
-    W = cp.asnumpy(W)
-    return W
+
+    W1 = cp.asnumpy(W)
+    del W,C,P   
+    return W1

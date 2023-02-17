@@ -4,7 +4,8 @@ import time
 import pandas as pd
 from .timer import Timer
 import numpy as np
-from netZooPy.otter import otter
+from netZooPy.otter.otter import otter
+from netZooPy.otter.otter import otter_gpu
 from netZooPy.lioness import io
 import sys
 import os
@@ -167,17 +168,17 @@ class LionessOtter():
             os.makedirs(self.output_folder)
         
         if precision=='single':
-            atype = 'float32'
+            self.atype = 'float32'
         elif precision=='double':
-            atype = 'float64'
+            self.atype = 'float64'
         else: 
             sys.exit('Precision %s unknonw' %str(precision))
         
         # let's sort the expression and ppi data
 
-        self.expression_data = self.expression_data.astype(atype)
-        self.motif_data = self.motif_data.astype(atype)
-        self.ppi_data = self.ppi_data.astype(atype)
+        self.expression_data = self.expression_data.astype(self.atype)
+        self.motif_data = self.motif_data.astype(self.atype)
+        self.ppi_data = self.ppi_data.astype(self.atype)
         
         # First we get the 
         if computing=='cpu':
@@ -187,6 +188,10 @@ class LionessOtter():
                 # running otter for all samples
                 self.all_otter = otter(self.motif_data.values, self.ppi_data.values, correlation_complete, lam=lam, gamma=gamma, Iter=Iter, eta=eta, bexp=bexp)
             
+            with Timer("Saving OTTER for all samples ..."):
+                name = "otter.%s" %(str(self.save_fmt))            
+                print('Saving %s' %name)
+                self.__lioness_to_disk(self.all_otter, path = self.output_folder+'/'+name)
             # Now for each sample we compute the lioness network from correlations and 
             # the panda using the motif and ppi tables
             for s,sample in enumerate(self.samples):
@@ -198,12 +203,19 @@ class LionessOtter():
             import cupy as cp
             cp._default_memory_pool.free_all_blocks() 
             
-            correlation_complete = cp.corrcoef(self.expression_data.values).astype(atype)
+            correlation_complete = cp.corrcoef(self.expression_data.values).astype(self.atype)
 
             with Timer("Running OTTER for all samples ..."):
                 # running otter for all samples
                 self.all_otter = otter_gpu(self.motif_data.values, self.ppi_data.values, correlation_complete, lam=lam, gamma=gamma, Iter=Iter, eta=eta, bexp=bexp)
-            
+                del correlation_complete
+                cp._default_memory_pool.free_all_blocks() 
+                
+            with Timer("Saving OTTER for all samples ..."):
+                name = "otter.%s" %(str(self.save_fmt))            
+                print('Saving %s' %name)
+                self.__lioness_to_disk(self.all_otter, path = self.output_folder+'/'+name)
+                
             # Now for each sample we compute the lioness network from correlations and 
             # the panda using the motif and ppi tables
             for s,sample in enumerate(self.samples):
@@ -231,9 +243,26 @@ class LionessOtter():
         
         all_samples_minus_q = list(set(self.samples).difference(set([sample])))
         #correlation_current = self.expression_data.loc[:, all_samples_minus_q ].T.corr()
-        correlation_current = np.corrcoef(self.expression_data.loc[:, all_samples_minus_q ].values)
         
-        all_minus_q = otter(self.motif_data.values, self.ppi_data.values, correlation_current, lam=lam, gamma=gamma, Iter=Iter, eta=eta, bexp=bexp)
+        if computing=='cpu':
+            # compute correlation for all samples but q
+            correlation_current = np.corrcoef(self.expression_data.loc[:, all_samples_minus_q ].values.astype(self.atype)).astype(self.atype)
+            # compute otter for all samples but q
+            all_minus_q = otter(self.motif_data.values, self.ppi_data.values, correlation_current, lam=lam, gamma=gamma, Iter=Iter, eta=eta, bexp=bexp)
+        elif computing=='gpu':
+            import cupy as cp
+            cp._default_memory_pool.free_all_blocks() 
+            cp._default_pinned_memory_pool.free_all_blocks() 
+            # compute correlation for all samples but q
+            correlation_complete = cp.corrcoef(self.expression_data.loc[:, all_samples_minus_q ].values).astype(self.atype)
+            # running otter for all samples but q
+            all_minus_q = otter_gpu(self.motif_data.values, self.ppi_data.values, correlation_complete, lam=lam, gamma=gamma, Iter=Iter, eta=eta, bexp=bexp)
+            del correlation_complete
+            
+            cp._default_memory_pool.free_all_blocks() 
+            cp._default_pinned_memory_pool.free_all_blocks() 
+        else:
+            sys.exit('Use one of gpu/cpu for computations')
         
         lioness_otter = (self.n_samples*self.all_otter)-(self.n_samples-1)*(all_minus_q)
         
@@ -263,9 +292,9 @@ class LionessOtter():
         if self.save_fmt == "txt":
             np.savetxt(path, net)
         elif self.save_fmt == "h5":
-            pd.DataFrame(data = net, columns=self.gene_names, index = self.tf_names).to_hdf(path, key = 'lioness' ,mode='w')
+            pd.DataFrame(data = net, columns=self.universe_genes, index = self.universe_tfs).to_hdf(path, key = 'lioness' ,mode='w')
         elif self.save_fmt == 'csv':
-            pd.DataFrame(data = net, columns=self.gene_names, index = self.tf_names).to_csv(path)
+            pd.DataFrame(data = net, columns=self.universe_genes, index = self.universe_tfs).to_csv(path)
         elif self.save_fmt == "npy":
             np.save(path, net)
         elif self.save_fmt == "mat":
