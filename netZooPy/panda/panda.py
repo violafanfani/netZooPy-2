@@ -124,7 +124,8 @@ class Panda(object):
         with_header=False, 
         cobra_design_matrix = None, 
         cobra_covariate_to_keep = 0,
-        tmp_folder = './tmp/'
+        tmp_folder = './tmp/',
+        run_panda = True,
     ):
         """ Intialize instance of Panda class and load data.
         """
@@ -189,29 +190,31 @@ class Panda(object):
         # delete expression data
         del self.expression_data
 
-        # =====================================================================
-        # Running PANDA algorithm
-        # =====================================================================
-        if self.motif_data is not None:
-            print("Running PANDA algorithm ...")
-            self.panda_network = self.panda_loop(
-                self.correlation_matrix,
-                self.motif_matrix,
-                self.ppi_matrix,
-                computing,
-                alpha,
-            )
-            # label dataframe
-            self.panda_network = pd.DataFrame(
-                self.panda_network, index=self.tfs, columns=self.genes
-            )
-        else:
-            self.panda_network = self.correlation_matrix
-            self.__pearson_results_data_frame()
-            # label dataframe
-            self.panda_network = pd.DataFrame(
-                self.panda_network, index=self.genes, columns=self.genes
-            )
+        # Here we do this, in case one just wants to get the pre-processed data
+        if run_panda:
+            # =====================================================================
+            # Running PANDA algorithm
+            # =====================================================================
+            if self.motif_data is not None:
+                print("Running PANDA algorithm ...")
+                self.panda_network = self.panda_loop(
+                    self.correlation_matrix,
+                    self.motif_matrix,
+                    self.ppi_matrix,
+                    computing,
+                    alpha,
+                )
+                # label dataframe
+                self.panda_network = pd.DataFrame(
+                    self.panda_network, index=self.tfs, columns=self.genes
+                )
+            else:
+                self.panda_network = self.correlation_matrix
+                self.__pearson_results_data_frame()
+                # label dataframe
+                self.panda_network = pd.DataFrame(
+                    self.panda_network, index=self.genes, columns=self.genes
+                )
 
     def __remove_missing(self):
         """ Removes the genes and TFs that are not present in one of the priors. Works only if modeProcess='legacy'.

@@ -7,6 +7,7 @@ from typing import Callable
 from netZooPy.cobra import *
 from netZooPy.giraffe.utils import *
 import logging
+import pandas as pd
 
 from torch.optim import Adam
 from torch.optim.optimizer import required
